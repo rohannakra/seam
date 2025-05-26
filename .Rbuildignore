@@ -1,0 +1,14 @@
+^seam\.Rproj$
+^\.Rproj\.user$
+^LICENSE\.md$
+^README\.Rmd$
+^\.github$
+^tests/informal/scratch\.R$
+^tests/informal/shiny-prep\.R$
+^data-raw$
+^app\.R$
+^setup\.R$
+^data$
+app.R
+setup.R
+^validation\.R$
