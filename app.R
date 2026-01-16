@@ -1,6 +1,8 @@
 library("shiny", quietly = TRUE, warn.conflicts = FALSE)
 library("ggplot2", quietly = TRUE, warn.conflicts = FALSE)
 library("dplyr", quietly = TRUE, warn.conflicts = FALSE)
+library("markdown", quietly = TRUE, warn.conflicts = FALSE)
+library("jsonlite", quietly = TRUE, warn.conflicts = FALSE)
 
 bip = readRDS("data/bip.Rds")
 b_lu = data.frame(readRDS("data/b-lu.Rds")) # why is this so much faster as a data frame
@@ -45,6 +47,10 @@ ui = fluidPage(
       sliderInput("b_ratio", "Ratio of LA/EV to Batted Ball Location", min = 0, max = 1, value = .85, step = .01),
       hr(),
       selectInput("stadium", label = "Stadium", choices = stadiums, selected = "angels"),
+      hr(),
+      shiny::markdown('<img src="https://upload.wikimedia.org/wikipedia/commons/thumb/8/8a/Google_Gemini_logo.svg/640px-Google_Gemini_logo.svg.png" width=55/><br>'),
+      uiOutput("llm_analysis"),
+      shiny::markdown('<small style="color: grey; text-align: center; display: block;">Gemini can make mistakes. For reference only.</small>')
     ),
     mainPanel(
       tabsetPanel(type = "tabs",
@@ -57,6 +63,9 @@ ui = fluidPage(
 )
 
 server = function(input, output, session) {
+  output$rendered_markdown <- renderUI({
+    markdown::markdownToHTML(text = input$markdown_input, fragment.only = TRUE)
+  })
 
   observeEvent(input$batter, {
     freezeReactiveValue(input, "stadium")
@@ -84,6 +93,31 @@ server = function(input, output, session) {
 
   output$plot_full = renderPlot({
     plots()$p1
+  })
+
+  llm_response = reactiveVal("")    # Store LLM response
+  llm_loading = reactiveVal(FALSE)
+
+  observeEvent(list(input$batter, input$pitcher), {
+    seam_matchup <- matchup()
+    seam_json <- jsonlite::toJSON(seam_matchup$seam_df)
+    write(seam_json, "LLM/seam_data.json")
+
+    cmd <- sprintf(
+        'python LLM/llm.py "%s" "%s"',
+        input$pitcher,
+        input$batter
+      )
+    
+    print(paste("Running:", cmd))
+    
+    result <- system(cmd, intern = TRUE)
+    llm_response(paste(result, collapse = "\n"))
+    llm_loading(FALSE)
+  }, ignoreInit = FALSE)
+
+  output$llm_analysis = renderUI({
+    shiny::markdown(llm_response())
   })
 
   output$plot_comp = renderPlot({
