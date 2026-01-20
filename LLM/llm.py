@@ -4,7 +4,7 @@ import sys
 import json
 import numpy as np
 
-client = genai.Client(api_key="AIzaSyB7EW_rIHXbbHv2LGurIrZW2oBDqIMa1kc")   
+client = genai.Client(api_key="")   
 
 def llm_output(hitter, pitcher):
 
