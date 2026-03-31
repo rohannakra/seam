@@ -1,72 +1,82 @@
-from google import genai
 import os
 import sys
-import json
+from google import genai
 import numpy as np
+from dotenv import load_dotenv
+import json
 
-client = genai.Client(api_key="AIzaSyB7EW_rIHXbbHv2LGurIrZW2oBDqIMa1kc")   
+# print(f"Python executable: {sys.executable}")
+# print(f"Python version: {sys.version}")
 
-def llm_output(hitter, pitcher):
+load_dotenv()
+seam_api_key = os.getenv("SEAM_API_KEY")
+
+client = genai.Client(api_key=seam_api_key)
+
+def llm_output(pitcher, hitter):
 
     with open("LLM/seam_data.json", "r") as f:
         seam_data = json.load(f)
     
     z_values = [point.get('z', 0) for point in seam_data]
-    threshold = np.percentile(z_values, 90)  # Top 10% of density
+    threshold = np.percentile(z_values, 96)    # top 4% of density.
     
     high_density = [point for point in seam_data if point.get('z', 0) > threshold]
 
     prompt = f"""
     
-    You are a baseball analyst, given SEAM data, a predictive batted-ball distrubution of a hypothetical matchup between {hitter} and {pitcher} with coordinates (x, y) on a baseball field with density (z).
-    This data contains the highest density regions, otherwise known as the regions of the field where the ball is most likely to land for the hypothetical matchup between {hitter} and {pitcher}
+    You are a baseball analyst, given SEAM data, a predictive batted-ball distrubution of the matchup with coordinates (x, y) on a field with density (z).
+    Data contains the highest density regions, the regions of the field where the ball is most likely to land for the matchup between hitter="{hitter}" and pitcher="{pitcher}".
+    Reference https://github.com/ecklab/seam-manuscript/blob/main/seam.pdf
 
-    SEAM data: {high_density}
+    IMPORTANT: only use data from https://baseballsavant.mlb.com/
+
+    SEAM data (highest density regions): {high_density}
 
     Requirements:
-        - only include 2-3 bullet points and no other text above or below it
-        - 100 - 150 characters for each bullet point
-        - include a new line between each bullet point
-        - make sure to include 2-3 DETAILED statistics
-        - These statistics provide evidence for the SEAM data. For example, you should say "[statistic] aligns with SEAM data..." not "SEAM data aligns with [statistic]" 
-        - Include a newline after each bullet point
-
-    Here are some ideas for each bullet point:
-        - hitter's pull rate
-        - hitter's exit velocity in specific quadrants of the strike zone
-        - pitcher's pitch placement
-        - pitcher's pitch selection
-        - cite matchup(s) between {hitter} and {pitcher} (outcome of matchup(s), batter/pitcher approach throughout at-bat, etc.)
-
-    For example, if given hitter="Pete Crow-Armstrong", pitcher="Paul Skenes", the output may look like:
-
-        * Crow-Armstrong was 7th in Pull % in 2025, confirming SEAM's highest density region being on Crow Armstrong's pull-side
-
-        * In 12 matchups, Skenes commonly induces weak contact to the right side of the field aligning with almost all SEAM data being near 1B/RF
-
-    For example, if given hitter="Javier Baez", pitcher="Matthew Boyd", the output may look like
-
-        * Baez had a chase % of 46.1% in 2025, resulting in weak contact, corresponding with SEAM's highest density region lying in the infield
-
-        * In their matchups, Boyd attacked Baez with fastballs and changeups outside of the strikezone to create weak infield pop-ups
+        - only include 2-3 bullet points, no text above or below it
+        - 100-150 characters for each bullet point
+        - add a new line after each bullet point
+        - include 2-3 player tendencies
+        - trendencies provide evidence for SEAM data... example, say "[tendency] aligns with SEAM data..." not "SEAM data aligns with [tendency]"
     
-    Notice how each example includes DETAILED statistics and data from matchups between the pitcher and hitter
-    Also notice that each example shows how the statistic/previous matchups correlate with the SEAM data
-    Also remember the (x, y) coordinates represent locations on a baseball field NOT a strikezone
+    Bullet point ideas:
+        - hitter's statcast tendencies
+        - pitcher's statcast tendencies
+        - defensive positioning recommendations
+    
+    IMPORTANT: don't mention stats or percentages, only tendencies (Player A had high pull rate... don't say Player A had 12% pull rate)
 
+    Example, hitter="Javier Baez", pitcher="Matthew Boyd":
+
+        * Baez's high chase % throughout his career, often resulting in weak contact, corresponds with SEAM's highest density region lying in the infield.
+
+        * Baez's low 2025 barrel % correlates to SEAM data showing high densities in the infield and shallow outfield.
+
+        * Consider positioning outfielders in the shallow outfield to account for Baez's tendency for weak contact.
     """
 
-    response = client.models.generate_content(
-        model="gemini-2.5-flash-lite",
-        contents=prompt
-    )
+    try:
+        response = client.models.generate_content(
+            model="gemini-3.1-flash-lite-preview",    # NOTE: probably best option is "gemini-3.1-flash-lite-preview"
+            contents=prompt    # FIXME: change during deployment.
+        )
 
-    return response.text
+        return response.text
+    except Exception as e:
+        return '**Error:** API is currently experiencing high demand.'
 
 if __name__ == "__main__":
     print(llm_output(sys.argv[1], sys.argv[2]))
 
 # # ---- TESTING ----
-# llm_output("Javier Baez", "Clayton Kershaw")    # NOTE: use this just to test that API is responsive
+# print(llm_output("Shohei Ohtani", "Clayton Kershaw"))
 
-# NOTE: seems like should be 60 characters per bullet (measured 58).
+
+    # Example, hitter="Pete Crow-Armstrong", pitcher="Paul Skenes":    # NOTE: had to take out this example from the LLM prompt due to rate limits.
+
+    #     * Skene's low hard-hit % aligns with SEAM's highest density region lying in the infield.
+
+    #     * Crow Armstrong's high ground ball tendencies aligns with SEAM's data showing it's higest density in the infield.
+
+    #     * Consider defensive shifts to towards the 1B side, as SEAM data indicates a high % of batted balls toward PCA's pull side.
